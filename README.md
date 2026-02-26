@@ -14,11 +14,12 @@ Includes both a **CLI** and a **browser-based dashboard**.
 4. [Setup](#setup)
 5. [Running — CLI](#running--cli)
 6. [Running — Web UI](#running--web-ui)
-7. [API Reference (Web)](#api-reference-web)
-8. [Logging](#logging)
-9. [Testing & Validation](#testing--validation)
-10. [Troubleshooting](#troubleshooting)
-11. [Design Decisions & Assumptions](#design-decisions--assumptions)
+7. [Running — Docker](#running--docker)
+8. [API Reference (Web)](#api-reference-web)
+9. [Logging](#logging)
+10. [Testing & Validation](#testing--validation)
+11. [Troubleshooting](#troubleshooting)
+12. [Design Decisions & Assumptions](#design-decisions--assumptions)
 
 ---
 
@@ -68,6 +69,9 @@ trading_bot/
 ├── logs/                     # Auto-created; rotating log files
 ├── .env.example              # Template for API credentials
 ├── .gitignore
+├── .dockerignore             # Files excluded from Docker build context
+├── Dockerfile                # Multi-stage production image
+├── docker-compose.yml        # One-command container orchestration
 ├── requirements.txt
 └── README.md                 # ← you are here
 ```
@@ -76,10 +80,12 @@ trading_bot/
 
 ## Prerequisites
 
-| Requirement | Version |
-|-------------|---------|
-| Python      | 3.8 +   |
-| pip         | any     |
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Python      | 3.8 +   | Not needed if using Docker |
+| pip         | any     | Not needed if using Docker |
+| Docker      | 20.10+  | Optional — for containerised deployment |
+| Docker Compose | v2+  | Optional — bundled with Docker Desktop |
 
 You also need a **Binance Futures Testnet** API key:
 
@@ -180,6 +186,69 @@ reloader during development — **never use this on a public network**.
   Order History (with status badges)
 - **Toast notifications** — success / error / info
 - Auto-refresh every 5 s
+
+---
+
+## Running — Docker
+
+The project includes a multi-stage `Dockerfile` and a `docker-compose.yml`
+for one-command setup.
+
+### Quick start (Docker Compose)
+
+```bash
+# 1 — Configure credentials
+cp .env.example .env
+# Edit .env with your testnet API key & secret
+
+# 2 — Build and start
+docker compose up --build
+
+# Dashboard is now at http://localhost:5000
+```
+
+### Docker Compose commands
+
+```bash
+docker compose up -d            # start in background
+docker compose logs -f          # follow logs
+docker compose down             # stop and remove container
+docker compose down -v          # also remove log volume
+```
+
+### Standalone Docker (without Compose)
+
+```bash
+# Build
+docker build -t trading-bot .
+
+# Run
+docker run -d --name trading-bot \
+  -p 5000:5000 \
+  --env-file .env \
+  trading-bot
+
+# CLI mode (one-off order)
+docker run --rm --env-file .env trading-bot \
+  python cli.py --symbol BTCUSDT --side BUY --type MARKET --quantity 0.01
+```
+
+### Customise the port
+
+Set `FLASK_PORT` in `.env` to expose a different host port:
+
+```dotenv
+FLASK_PORT=8080
+```
+
+Then `docker compose up` will map `localhost:8080 → container:5000`.
+
+### Image details
+
+- **Base:** `python:3.11-slim` (multi-stage — build deps stay out of final image)
+- **Runs as:** non-root `botuser`
+- **Health check:** `GET /api/status` every 30 s
+- **Logs:** persisted via a Docker volume (`bot-logs`)
 
 ---
 
