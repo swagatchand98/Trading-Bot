@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trading Bot · Binance Futures Testnet</title>
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────── */
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#0b0e11; --bg2:#12161c; --surface:#1e2329; --surface2:#2b3139;
+      --border:#2e333a; --border-light:#3a4048;
+      --text:#eaecef; --text2:#b7bdc6; --muted:#6c7284;
+      --accent:#f0b90b; --accent-dim:rgba(240,185,11,.12);
+      --green:#0ecb81; --green-dim:rgba(14,203,129,.10);
+      --red:#f6465d; --red-dim:rgba(246,70,93,.10);
+      --blue:#1e80ff; --blue-dim:rgba(30,128,255,.10);
+      --radius:6px; --radius-lg:10px;
+      --shadow:0 2px 12px rgba(0,0,0,.4);
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      --mono:"SF Mono",SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
+    }
+    body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;overflow-x:hidden}
+    a{color:var(--accent);text-decoration:none}
+
+    /* ── Navbar ────────────────────────────────────────────────── */
+    .navbar{
+      background:var(--bg2);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 24px;height:56px;position:sticky;top:0;z-index:100;
+    }
+    .navbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.05rem}
+    .navbar .brand svg{width:28px;height:28px}
+    .nav-right{display:flex;align-items:center;gap:16px}
+    .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+    .status-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+    .status-dot.err{background:var(--red);box-shadow:0 0 6px var(--red)}
+    .status-dot.loading{background:var(--accent);animation:pulse 1s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .nav-label{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+    .env-badge{
+      background:var(--accent-dim);color:var(--accent);
+      padding:2px 10px;border-radius:12px;font-size:.72rem;font-weight:600;
+      text-transform:uppercase;letter-spacing:.5px;
+    }
+
+    /* ── Ticker Bar ───────────────────────────────────────────── */
+    .ticker-bar{
+      background:var(--bg2);border-bottom:1px solid var(--border);
+      padding:10px 24px;display:flex;align-items:center;gap:32px;
+      overflow-x:auto;flex-wrap:nowrap;
+    }
+    .ticker-symbol{font-size:1.15rem;font-weight:700;display:flex;align-items:center;gap:8px}
+    .ticker-symbol select{
+      background:var(--surface);border:1px solid var(--border);color:var(--text);
+      font-size:1.05rem;font-weight:700;padding:4px 8px;border-radius:4px;
+      cursor:pointer;outline:none;font-family:var(--font);
+    }
+    .ticker-stat{display:flex;flex-direction:column}
+    .ticker-stat .label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+    .ticker-stat .value{font-size:.9rem;font-weight:600;font-family:var(--mono)}
+    .ticker-stat .value.up{color:var(--green)}
+    .ticker-stat .value.down{color:var(--red)}
+    .ticker-price{font-size:1.6rem;font-weight:700;font-family:var(--mono);letter-spacing:-.5px}
+
+    /* ── Main Layout ──────────────────────────────────────────── */
+    .main{display:grid;grid-template-columns:340px 1fr;grid-template-rows:auto 1fr;gap:0;min-height:calc(100vh - 112px)}
+    @media(max-width:900px){.main{grid-template-columns:1fr}}
+    .panel{background:var(--surface);border:1px solid var(--border);padding:16px 20px}
+
+    /* ── Order Panel (left) ───────────────────────────────────── */
+    .order-panel{grid-row:1/3;border-right:1px solid var(--border)}
+    .tab-row{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)}
+    .tab-btn{
+      flex:1;padding:10px;text-align:center;font-size:.85rem;font-weight:600;
+      cursor:pointer;background:transparent;border:none;color:var(--muted);
+      border-bottom:2px solid transparent;margin-bottom:-2px;transition:.15s;
+    }
+    .tab-btn:hover{color:var(--text2)}
+    .tab-btn.active-buy{color:var(--green);border-bottom-color:var(--green)}
+    .tab-btn.active-sell{color:var(--red);border-bottom-color:var(--red)}
+
+    .field{margin-bottom:12px}
+    .field label{display:block;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+    .input-group{display:flex;align-items:stretch;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:border-color .15s}
+    .input-group:focus-within{border-color:var(--accent)}
+    .input-group.error{border-color:var(--red) !important;animation:shake .3s}
+    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+    .input-group input,.input-group select{
+      flex:1;padding:10px 12px;background:transparent;border:none;
+      color:var(--text);font-size:.9rem;outline:none;font-family:var(--mono);min-width:0;
+    }
+    .input-group select{font-family:var(--font);cursor:pointer}
+    .input-group .suffix{
+      padding:10px 12px;color:var(--muted);font-size:.8rem;
+      display:flex;align-items:center;border-left:1px solid var(--border);background:var(--bg2);
+      white-space:nowrap;
+    }
+    .field-error{color:var(--red);font-size:.72rem;margin-top:4px;display:none}
+    .field-error.show{display:block}
+
+    .order-type-tabs{display:flex;gap:0;margin-bottom:14px}
+    .ot-btn{
+      flex:1;padding:8px;text-align:center;font-size:.82rem;font-weight:600;
+      background:var(--bg);border:1px solid var(--border);color:var(--muted);cursor:pointer;
+      transition:.15s;
+    }
+    .ot-btn:first-child{border-radius:var(--radius) 0 0 var(--radius)}
+    .ot-btn:last-child{border-radius:0 var(--radius) var(--radius) 0}
+    .ot-btn.active{background:var(--surface2);color:var(--text);border-color:var(--border-light)}
+
+    .pct-row{display:flex;gap:6px;margin:8px 0 14px}
+    .pct-btn{
+      flex:1;padding:5px;text-align:center;font-size:.72rem;font-weight:600;
+      background:var(--bg);border:1px solid var(--border);border-radius:4px;
+      color:var(--muted);cursor:pointer;transition:.15s;
+    }
+    .pct-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+    .order-info{
+      display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);
+      margin-bottom:6px;padding:4px 0;
+    }
+    .order-info span:last-child{color:var(--text2);font-family:var(--mono)}
+
+    #submit-btn{
+      width:100%;padding:14px;font-size:.95rem;font-weight:700;
+      border:none;border-radius:var(--radius);cursor:pointer;transition:.15s;
+      text-transform:uppercase;letter-spacing:.5px;margin-top:8px;
+    }
+    #submit-btn:disabled{opacity:.4;cursor:not-allowed}
+    #submit-btn.buy-mode{background:var(--green);color:#fff}
+    #submit-btn.sell-mode{background:var(--red);color:#fff}
+    #submit-btn:not(:disabled):hover{filter:brightness(1.1)}
+
+    /* ── Right panels ─────────────────────────────────────────── */
+    .right-area{display:flex;flex-direction:column}
+
+    /* ── Account strip ────────────────────────────────────────── */
+    .account-strip{
+      display:flex;gap:0;border-bottom:1px solid var(--border);flex-wrap:wrap;
+    }
+    .acct-stat{
+      flex:1;min-width:140px;padding:14px 20px;
+      border-right:1px solid var(--border);
+    }
+    .acct-stat:last-child{border-right:none}
+    .acct-stat .label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+    .acct-stat .val{font-size:1.05rem;font-weight:700;font-family:var(--mono);margin-top:2px}
+
+    /* ── Tabs for bottom panels ───────────────────────────────── */
+    .bottom-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface)}
+    .btab{
+      padding:10px 20px;font-size:.8rem;font-weight:600;color:var(--muted);
+      cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:.15s;
+    }
+    .btab:hover{color:var(--text2)}
+    .btab.active{color:var(--accent);border-bottom-color:var(--accent)}
+    .btab .count{
+      background:var(--surface2);font-size:.65rem;padding:1px 6px;
+      border-radius:8px;margin-left:6px;
+    }
+
+    .tab-content{display:none;padding:0}
+    .tab-content.active{display:block}
+
+    /* ── Tables ────────────────────────────────────────────────── */
+    .data-table{width:100%;border-collapse:collapse;font-size:.8rem}
+    .data-table th{
+      text-align:left;font-weight:600;color:var(--muted);text-transform:uppercase;
+      letter-spacing:.3px;font-size:.68rem;padding:10px 14px;
+      border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;
+    }
+    .data-table td{padding:10px 14px;border-bottom:1px solid var(--border)}
+    .data-table tbody tr:hover{background:var(--bg2)}
+    .data-table .mono{font-family:var(--mono)}
+    .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.7rem;font-weight:600}
+    .tag-buy{background:var(--green-dim);color:var(--green)}
+    .tag-sell{background:var(--red-dim);color:var(--red)}
+    .tag-long{background:var(--green-dim);color:var(--green)}
+    .tag-short{background:var(--red-dim);color:var(--red)}
+    .tag-status{background:var(--blue-dim);color:var(--blue)}
+    .tag-filled{background:var(--green-dim);color:var(--green)}
+    .tag-new{background:var(--accent-dim);color:var(--accent)}
+    .cancel-btn{
+      background:transparent;border:1px solid var(--red);color:var(--red);
+      padding:3px 10px;border-radius:4px;font-size:.72rem;cursor:pointer;
+      font-weight:600;transition:.15s;
+    }
+    .cancel-btn:hover{background:var(--red-dim)}
+    .cancel-btn:disabled{opacity:.3;cursor:not-allowed}
+
+    .empty-msg{color:var(--muted);text-align:center;padding:40px 20px;font-size:.85rem}
+    .scroll-wrap{max-height:340px;overflow-y:auto}
+
+    /* ── Toasts ────────────────────────────────────────────────── */
+    #toast-container{
+      position:fixed;top:70px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;
+      pointer-events:none;
+    }
+    .toast{
+      padding:12px 18px;border-radius:var(--radius);font-size:.85rem;
+      box-shadow:var(--shadow);pointer-events:auto;
+      animation:slideIn .3s ease, fadeOut .4s ease 3.6s forwards;
+      max-width:420px;word-break:break-word;display:flex;align-items:flex-start;gap:10px;
+    }
+    .toast .icon{font-size:1.1rem;flex-shrink:0;margin-top:1px}
+    .toast.success{background:#0d2618;border:1px solid var(--green);color:var(--green)}
+    .toast.error{background:#2a1215;border:1px solid var(--red);color:var(--red)}
+    .toast.info{background:#0d1a2e;border:1px solid var(--blue);color:var(--blue)}
+    @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes fadeOut{to{opacity:0;transform:translateY(-10px)}}
+
+    /* ── Confirmation Modal ───────────────────────────────────── */
+    .modal-overlay{
+      position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;
+      display:none;align-items:center;justify-content:center;
+    }
+    .modal-overlay.show{display:flex}
+    .modal{
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
+      padding:28px;max-width:420px;width:90%;box-shadow:var(--shadow);
+    }
+    .modal h3{font-size:1rem;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+    .modal .detail-row{display:flex;justify-content:space-between;padding:6px 0;font-size:.85rem;border-bottom:1px solid var(--border)}
+    .modal .detail-row .lbl{color:var(--muted)}
+    .modal .detail-row .val{font-weight:600;font-family:var(--mono)}
+    .modal-actions{display:flex;gap:10px;margin-top:20px}
+    .modal-actions button{
+      flex:1;padding:10px;border:none;border-radius:var(--radius);
+      font-size:.88rem;font-weight:600;cursor:pointer;transition:.15s;
+    }
+    .btn-cancel-modal{background:var(--surface2);color:var(--text2)}
+    .btn-cancel-modal:hover{background:var(--border)}
+    .btn-confirm{color:#fff}
+    .btn-confirm.buy{background:var(--green)}
+    .btn-confirm.sell{background:var(--red)}
+    .btn-confirm:hover{filter:brightness(1.1)}
+
+    /* ── Loading shimmer ──────────────────────────────────────── */
+    .loading-shimmer{
+      background:linear-gradient(90deg,var(--surface2) 25%,var(--border) 50%,var(--surface2) 75%);
+      background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:4px;
+    }
+    @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .placeholder-val{display:inline-block;width:80px;height:16px;vertical-align:middle}
+
+    /* scrollbar */
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:var(--bg)}
+    ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+    ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+  </style>
+</head>
+<body>
+
+<!-- ═══ NAVBAR ═════════════════════════════════════════════════════ -->
+<nav class="navbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="#F0B90B"/><path d="M16 6l3.2 3.2-5.6 5.6L16 17.6l5.6-5.6L24.8 15.2 16 24 7.2 15.2l3.2-3.2 5.6 5.6 2.8-2.8-5.6-5.6L16 6z" fill="#12161C"/></svg>
+    Trading Bot
+  </div>
+  <div class="nav-right">
+    <div class="nav-label" id="conn-status">
+      <span class="status-dot loading"></span>
+      <span>Connecting…</span>
+    </div>
+    <span class="env-badge">Testnet</span>
+  </div>
+</nav>
+
+<!-- ═══ TICKER BAR ════════════════════════════════════════════════ -->
+<div class="ticker-bar">
+  <div class="ticker-symbol">
+    <select id="symbol-select">
+      <option value="BTCUSDT">BTCUSDT</option>
+      <option value="ETHUSDT">ETHUSDT</option>
+      <option value="BNBUSDT">BNBUSDT</option>
+      <option value="SOLUSDT">SOLUSDT</option>
+      <option value="XRPUSDT">XRPUSDT</option>
+      <option value="DOGEUSDT">DOGEUSDT</option>
+    </select>
+    <span style="color:var(--muted);font-size:.8rem;font-weight:400">Perpetual</span>
+  </div>
+  <div class="ticker-stat">
+    <span class="label">Price</span>
+    <span class="value ticker-price" id="tk-price"><span class="loading-shimmer placeholder-val"></span></span>
+  </div>
+  <div class="ticker-stat">
+    <span class="label">24h Change</span>
+    <span class="value" id="tk-change"><span class="loading-shimmer placeholder-val"></span></span>
+  </div>
+  <div class="ticker-stat">
+    <span class="label">24h High</span>
+    <span class="value" id="tk-high"><span class="loading-shimmer placeholder-val"></span></span>
+  </div>
+  <div class="ticker-stat">
+    <span class="label">24h Low</span>
+    <span class="value" id="tk-low"><span class="loading-shimmer placeholder-val"></span></span>
+  </div>
+  <div class="ticker-stat">
+    <span class="label">24h Volume</span>
+    <span class="value" id="tk-vol"><span class="loading-shimmer placeholder-val"></span></span>
+  </div>
+</div>
+
+<!-- ═══ MAIN GRID ═════════════════════════════════════════════════ -->
+<div class="main">
+
+  <!-- ─── ORDER PANEL (left) ──────────────────────────────────── -->
+  <div class="panel order-panel">
+    <div class="tab-row">
+      <button class="tab-btn active-buy" data-side="BUY" id="buy-tab">Buy / Long</button>
+      <button class="tab-btn" data-side="SELL" id="sell-tab">Sell / Short</button>
+    </div>
+
+    <div class="order-type-tabs">
+      <button class="ot-btn active" data-type="MARKET">Market</button>
+      <button class="ot-btn" data-type="LIMIT">Limit</button>
+    </div>
+
+    <form id="order-form" autocomplete="off">
+      <input type="hidden" id="side" value="BUY" />
+      <input type="hidden" id="order_type" value="MARKET" />
+
+      <div class="field" id="price-field" style="display:none">
+        <label>Price</label>
+        <div class="input-group" id="price-group">
+          <input type="text" id="price" placeholder="0.00" />
+          <span class="suffix">USDT</span>
+        </div>
+        <div class="field-error" id="price-error">Please enter a valid price</div>
+      </div>
+
+      <div class="field">
+        <label>Quantity</label>
+        <div class="input-group" id="qty-group">
+          <input type="text" id="quantity" placeholder="0.001" />
+          <span class="suffix" id="qty-suffix">BTC</span>
+        </div>
+        <div class="field-error" id="qty-error">Please enter a valid quantity</div>
+      </div>
+
+      <div class="pct-row">
+        <button type="button" class="pct-btn" data-pct="10">10%</button>
+        <button type="button" class="pct-btn" data-pct="25">25%</button>
+        <button type="button" class="pct-btn" data-pct="50">50%</button>
+        <button type="button" class="pct-btn" data-pct="75">75%</button>
+        <button type="button" class="pct-btn" data-pct="100">100%</button>
+      </div>
+
+      <div class="order-info">
+        <span>Available Balance</span>
+        <span id="avail-bal">-- USDT</span>
+      </div>
+      <div class="order-info">
+        <span>Est. Cost</span>
+        <span id="est-cost">-- USDT</span>
+      </div>
+
+      <button type="submit" id="submit-btn" class="buy-mode">Buy / Long</button>
+    </form>
+  </div>
+
+  <!-- ─── RIGHT AREA ─────────────────────────────────────────── -->
+  <div class="right-area">
+
+    <!-- account strip -->
+    <div class="account-strip">
+      <div class="acct-stat">
+        <div class="label">Wallet Balance</div>
+        <div class="val" id="ac-wallet"><span class="loading-shimmer placeholder-val"></span></div>
+      </div>
+      <div class="acct-stat">
+        <div class="label">Unrealized PnL</div>
+        <div class="val" id="ac-pnl"><span class="loading-shimmer placeholder-val"></span></div>
+      </div>
+      <div class="acct-stat">
+        <div class="label">Margin Balance</div>
+        <div class="val" id="ac-margin"><span class="loading-shimmer placeholder-val"></span></div>
+      </div>
+      <div class="acct-stat">
+        <div class="label">Available</div>
+        <div class="val" id="ac-avail"><span class="loading-shimmer placeholder-val"></span></div>
+      </div>
+    </div>
+
+    <!-- bottom tabs -->
+    <div class="bottom-tabs">
+      <div class="btab active" data-tab="positions">Positions <span class="count" id="pos-count">0</span></div>
+      <div class="btab" data-tab="open-orders">Open Orders <span class="count" id="oo-count">0</span></div>
+      <div class="btab" data-tab="history">Order History <span class="count" id="hist-count">0</span></div>
+    </div>
+
+    <!-- POSITIONS -->
+    <div class="tab-content active" id="tab-positions">
+      <div class="scroll-wrap">
+        <div class="empty-msg" id="pos-empty">No open positions</div>
+        <table class="data-table" id="pos-table" style="display:none">
+          <thead><tr>
+            <th>Symbol</th><th>Side</th><th>Size</th><th>Entry Price</th>
+            <th>Mark Price</th><th>PnL</th><th>Leverage</th>
+          </tr></thead>
+          <tbody id="pos-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- OPEN ORDERS -->
+    <div class="tab-content" id="tab-open-orders">
+      <div class="scroll-wrap">
+        <div class="empty-msg" id="oo-empty">No open orders</div>
+        <table class="data-table" id="oo-table" style="display:none">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Side</th><th>Type</th>
+            <th>Price</th><th>Quantity</th><th>Filled</th><th>Action</th>
+          </tr></thead>
+          <tbody id="oo-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ORDER HISTORY -->
+    <div class="tab-content" id="tab-history">
+      <div class="scroll-wrap">
+        <div class="empty-msg" id="hist-empty">No orders yet — place one to get started</div>
+        <table class="data-table" id="hist-table" style="display:none">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Side</th><th>Type</th>
+            <th>Price</th><th>Qty</th><th>Filled</th><th>Status</th><th>Order ID</th>
+          </tr></thead>
+          <tbody id="hist-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ CONFIRMATION MODAL ════════════════════════════════════════ -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <h3>⚡ Confirm Order</h3>
+    <div id="confirm-details"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel-modal" id="modal-cancel">Cancel</button>
+      <button class="btn-confirm buy" id="modal-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TOAST CONTAINER ═══════════════════════════════════════════ -->
+<div id="toast-container"></div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* ── DOM refs ────────────────────────────────────────────── */
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
+
+  const symbolSelect   = $('#symbol-select');
+  const sideInput      = $('#side');
+  const orderTypeInput = $('#order_type');
+  const priceField     = $('#price-field');
+  const priceInput     = $('#price');
+  const priceGroup     = $('#price-group');
+  const priceError     = $('#price-error');
+  const qtyInput       = $('#quantity');
+  const qtyGroup       = $('#qty-group');
+  const qtyError       = $('#qty-error');
+  const qtySuffix      = $('#qty-suffix');
+  const submitBtn      = $('#submit-btn');
+  const form           = $('#order-form');
+  const modal          = $('#confirm-modal');
+  const confirmBtn     = $('#modal-confirm');
+  const cancelBtn      = $('#modal-cancel');
+
+  let currentSide = 'BUY';
+  let currentType = 'MARKET';
+  let currentPrice = 0;
+  let availableBalance = 0;
+  let pendingOrder = null;
+
+  /* ── Toast system ────────────────────────────────────────── */
+  function toast(msg, type = 'info') {
+    const icons = { success: '✓', error: '✗', info: 'ℹ' };
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span class="icon">${icons[type] || ''}</span><span>${msg}</span>`;
+    $('#toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 4200);
+  }
+
+  /* ── Number formatting ──────────────────────────────────── */
+  function fmt(n, d = 2) {
+    const v = parseFloat(n);
+    if (isNaN(v)) return '--';
+    return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function fmtK(n) {
+    const v = parseFloat(n);
+    if (isNaN(v)) return '--';
+    if (v >= 1e9) return (v / 1e9).toFixed(2) + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(2) + 'K';
+    return v.toFixed(2);
+  }
+  function getBaseAsset(sym) { return sym.replace(/USDT$/, ''); }
+
+  /* ── API helper with retries ────────────────────────────── */
+  async function api(url, opts, retries = 1) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(url, { ...opts, signal: controller.signal });
+        clearTimeout(timeout);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Unknown API error');
+        return json.data;
+      } catch (err) {
+        if (attempt === retries) {
+          if (err.name === 'AbortError') throw new Error('Request timed out');
+          if (err.message && !err.message.includes('API error') && !err.message.includes('timed out')) {
+            throw new Error(`Network error: ${err.message}`);
+          }
+          throw err;
+        }
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+  }
+
+  /* ── Field validation helpers ───────────────────────────── */
+  function clearFieldError(group, errorEl) {
+    group.classList.remove('error');
+    errorEl.classList.remove('show');
+  }
+  function showFieldError(group, errorEl, msg) {
+    group.classList.add('error');
+    errorEl.textContent = msg;
+    errorEl.classList.add('show');
+  }
+  qtyInput.addEventListener('input', () => clearFieldError(qtyGroup, qtyError));
+  priceInput.addEventListener('input', () => clearFieldError(priceGroup, priceError));
+
+  /* ── Connection check ───────────────────────────────────── */
+  async function checkStatus() {
+    const el = $('#conn-status');
+    try {
+      await api('/api/status');
+      el.innerHTML = '<span class="status-dot ok"></span><span>Connected</span>';
+    } catch {
+      el.innerHTML = '<span class="status-dot err"></span><span>Disconnected</span>';
+    }
+  }
+
+  /* ── Ticker ─────────────────────────────────────────────── */
+  async function loadTicker() {
+    const sym = symbolSelect.value;
+    try {
+      const d = await api(`/api/ticker/${sym}`);
+      currentPrice = parseFloat(d.lastPrice);
+      const change = parseFloat(d.priceChangePercent);
+      const cls = change >= 0 ? 'up' : 'down';
+      const sign = change >= 0 ? '+' : '';
+      const priceDec = currentPrice > 100 ? 2 : 4;
+
+      $('#tk-price').className = `value ticker-price ${cls}`;
+      $('#tk-price').textContent = fmt(d.lastPrice, priceDec);
+      $('#tk-change').className = `value ${cls}`;
+      $('#tk-change').textContent = `${sign}${fmt(change)}%`;
+      $('#tk-high').textContent = fmt(d.highPrice, 2);
+      $('#tk-low').textContent = fmt(d.lowPrice, 2);
+      $('#tk-vol').textContent = fmtK(d.quoteVolume) + ' USDT';
+    } catch (err) {
+      console.warn('Ticker error:', err);
+    }
+    updateEstCost();
+  }
+
+  /* ── Account ────────────────────────────────────────────── */
+  async function loadAccount() {
+    try {
+      const d = await api('/api/account');
+      $('#ac-wallet').textContent = fmt(d.totalWalletBalance) + ' USDT';
+      const pnl = parseFloat(d.totalUnrealizedProfit);
+      const pnlEl = $('#ac-pnl');
+      pnlEl.textContent = (pnl >= 0 ? '+' : '') + fmt(pnl) + ' USDT';
+      pnlEl.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+      $('#ac-margin').textContent = fmt(d.totalMarginBalance) + ' USDT';
+      $('#ac-avail').textContent = fmt(d.availableBalance) + ' USDT';
+      availableBalance = parseFloat(d.availableBalance);
+      $('#avail-bal').textContent = fmt(availableBalance) + ' USDT';
+    } catch (err) {
+      console.warn('Account error:', err);
+    }
+  }
+
+  /* ── Positions ──────────────────────────────────────────── */
+  async function loadPositions() {
+    try {
+      const data = await api('/api/positions');
+      const tbody = $('#pos-body');
+      tbody.innerHTML = '';
+      $('#pos-count').textContent = data.length;
+      if (!data.length) {
+        $('#pos-empty').style.display = '';
+        $('#pos-table').style.display = 'none';
+        return;
+      }
+      $('#pos-empty').style.display = 'none';
+      $('#pos-table').style.display = '';
+      data.forEach(p => {
+        const amt = parseFloat(p.positionAmt);
+        const side = amt > 0 ? 'LONG' : 'SHORT';
+        const pnl = parseFloat(p.unRealizedProfit);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><b>${p.symbol}</b></td>
+          <td><span class="tag tag-${side.toLowerCase()}">${side}</span></td>
+          <td class="mono">${Math.abs(amt)}</td>
+          <td class="mono">${fmt(p.entryPrice, 2)}</td>
+          <td class="mono">${fmt(p.markPrice, 2)}</td>
+          <td class="mono" style="color:${pnl >= 0 ? 'var(--green)' : 'var(--red)'}">${pnl >= 0 ? '+' : ''}${fmt(pnl)}</td>
+          <td>${p.leverage}x</td>`;
+        tbody.appendChild(tr);
+      });
+    } catch (err) {
+      console.warn('Positions error:', err);
+    }
+  }
+
+  /* ── Open Orders ────────────────────────────────────────── */
+  async function loadOpenOrders() {
+    try {
+      const data = await api('/api/open-orders');
+      const tbody = $('#oo-body');
+      tbody.innerHTML = '';
+      $('#oo-count').textContent = data.length;
+      if (!data.length) {
+        $('#oo-empty').style.display = '';
+        $('#oo-table').style.display = 'none';
+        return;
+      }
+      $('#oo-empty').style.display = 'none';
+      $('#oo-table').style.display = '';
+      data.forEach(o => {
+        const t = new Date(o.time).toLocaleString();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${t}</td>
+          <td><b>${o.symbol}</b></td>
+          <td><span class="tag tag-${o.side.toLowerCase()}">${o.side}</span></td>
+          <td>${o.type}</td>
+          <td class="mono">${fmt(o.price, 2)}</td>
+          <td class="mono">${o.origQty}</td>
+          <td class="mono">${o.executedQty} / ${o.origQty}</td>
+          <td><button class="cancel-btn" data-sym="${o.symbol}" data-oid="${o.orderId}">Cancel</button></td>`;
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll('.cancel-btn').forEach(btn => {
+        btn.addEventListener('click', () => cancelOrder(btn.dataset.sym, btn.dataset.oid, btn));
+      });
+    } catch (err) {
+      console.warn('Open orders error:', err);
+    }
+  }
+
+  async function cancelOrder(symbol, orderId, btn) {
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      await api('/api/cancel-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, orderId }),
+      });
+      toast(`Order ${orderId} cancelled`, 'success');
+      loadOpenOrders();
+      loadAccount();
+    } catch (err) {
+      toast(`Cancel failed: ${err.message}`, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Cancel';
+    }
+  }
+
+  /* ── Order History ──────────────────────────────────────── */
+  async function loadHistory() {
+    try {
+      const data = await api('/api/orders');
+      const tbody = $('#hist-body');
+      tbody.innerHTML = '';
+      $('#hist-count').textContent = data.length;
+      if (!data.length) {
+        $('#hist-empty').style.display = '';
+        $('#hist-table').style.display = 'none';
+        return;
+      }
+      $('#hist-empty').style.display = 'none';
+      $('#hist-table').style.display = '';
+      data.forEach(o => {
+        const statusCls = o.status === 'FILLED' ? 'tag-filled' : (o.status === 'NEW' ? 'tag-new' : 'tag-status');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${o.time}</td>
+          <td><b>${o.symbol}</b></td>
+          <td><span class="tag tag-${(o.side || '').toLowerCase()}">${o.side}</span></td>
+          <td>${o.type}</td>
+          <td class="mono">${o.type === 'MARKET' ? 'Market' : fmt(o.price, 2)}</td>
+          <td class="mono">${o.origQty}</td>
+          <td class="mono">${o.executedQty}</td>
+          <td><span class="tag ${statusCls}">${o.status}</span></td>
+          <td class="mono" style="font-size:.72rem;color:var(--muted)">${o.orderId}</td>`;
+        tbody.appendChild(tr);
+      });
+    } catch (err) {
+      console.warn('History error:', err);
+    }
+  }
+
+  /* ── Side toggle ────────────────────────────────────────── */
+  $$('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentSide = btn.dataset.side;
+      sideInput.value = currentSide;
+      $$('.tab-btn').forEach(b => b.className = 'tab-btn');
+      btn.classList.add(currentSide === 'BUY' ? 'active-buy' : 'active-sell');
+      submitBtn.className = currentSide === 'BUY' ? 'buy-mode' : 'sell-mode';
+      submitBtn.textContent = currentSide === 'BUY' ? 'Buy / Long' : 'Sell / Short';
+      confirmBtn.className = `btn-confirm ${currentSide.toLowerCase()}`;
+    });
+  });
+
+  /* ── Order type toggle ──────────────────────────────────── */
+  $$('.ot-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentType = btn.dataset.type;
+      orderTypeInput.value = currentType;
+      $$('.ot-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      priceField.style.display = currentType === 'LIMIT' ? '' : 'none';
+      clearFieldError(priceGroup, priceError);
+      updateEstCost();
+    });
+  });
+
+  /* ── Symbol change ──────────────────────────────────────── */
+  symbolSelect.addEventListener('change', () => {
+    qtySuffix.textContent = getBaseAsset(symbolSelect.value);
+    loadTicker();
+  });
+
+  /* ── Percentage buttons ─────────────────────────────────── */
+  $$('.pct-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!currentPrice || !availableBalance) {
+        toast('Waiting for price & balance data…', 'info');
+        return;
+      }
+      const pct = parseInt(btn.dataset.pct) / 100;
+      const maxQty = availableBalance / currentPrice;
+      const qty = maxQty * pct;
+      qtyInput.value = qty.toFixed(6);
+      clearFieldError(qtyGroup, qtyError);
+      updateEstCost();
+    });
+  });
+
+  /* ── Est. cost ──────────────────────────────────────────── */
+  function updateEstCost() {
+    const qty = parseFloat(qtyInput.value) || 0;
+    const price = currentType === 'LIMIT' ? (parseFloat(priceInput.value) || 0) : currentPrice;
+    const cost = qty * price;
+    $('#est-cost').textContent = cost > 0 ? fmt(cost) + ' USDT' : '-- USDT';
+  }
+  qtyInput.addEventListener('input', updateEstCost);
+  priceInput.addEventListener('input', updateEstCost);
+
+  /* ── Bottom tabs ────────────────────────────────────────── */
+  $$('.btab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      $$('.btab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      $$('.tab-content').forEach(c => c.classList.remove('active'));
+      $(`#tab-${tab.dataset.tab}`).classList.add('active');
+    });
+  });
+
+  /* ── Confirm modal ──────────────────────────────────────── */
+  function showConfirmModal(payload) {
+    const p = currentType === 'LIMIT' ? priceInput.value : fmt(currentPrice, 2);
+    const qty = qtyInput.value;
+    const price = parseFloat(currentType === 'LIMIT' ? priceInput.value : currentPrice);
+    const cost = (parseFloat(qty) * price).toFixed(2);
+
+    $('#confirm-details').innerHTML = `
+      <div class="detail-row"><span class="lbl">Symbol</span><span class="val">${symbolSelect.value}</span></div>
+      <div class="detail-row"><span class="lbl">Side</span><span class="val" style="color:${currentSide === 'BUY' ? 'var(--green)' : 'var(--red)'}">${currentSide === 'BUY' ? 'Buy / Long' : 'Sell / Short'}</span></div>
+      <div class="detail-row"><span class="lbl">Type</span><span class="val">${currentType}</span></div>
+      <div class="detail-row"><span class="lbl">Price</span><span class="val">${currentType === 'MARKET' ? 'Market' : p + ' USDT'}</span></div>
+      <div class="detail-row"><span class="lbl">Quantity</span><span class="val">${qty} ${getBaseAsset(symbolSelect.value)}</span></div>
+      <div class="detail-row"><span class="lbl">Est. Cost</span><span class="val">${cost} USDT</span></div>`;
+    confirmBtn.className = `btn-confirm ${currentSide.toLowerCase()}`;
+    confirmBtn.textContent = `${currentSide === 'BUY' ? 'Buy / Long' : 'Sell / Short'}`;
+    pendingOrder = payload;
+    modal.classList.add('show');
+  }
+
+  cancelBtn.addEventListener('click', () => { modal.classList.remove('show'); pendingOrder = null; });
+  modal.addEventListener('click', (e) => { if (e.target === modal) { modal.classList.remove('show'); pendingOrder = null; } });
+
+  /* ── Form submit (validate → confirm) ───────────────────── */
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    let valid = true;
+
+    // Quantity validation
+    const qty = qtyInput.value.trim();
+    if (!qty || isNaN(parseFloat(qty)) || parseFloat(qty) <= 0) {
+      showFieldError(qtyGroup, qtyError, 'Enter a positive number');
+      valid = false;
+    } else {
+      clearFieldError(qtyGroup, qtyError);
+    }
+
+    // Price validation (LIMIT only)
+    if (currentType === 'LIMIT') {
+      const p = priceInput.value.trim();
+      if (!p || isNaN(parseFloat(p)) || parseFloat(p) <= 0) {
+        showFieldError(priceGroup, priceError, 'Enter a positive limit price');
+        valid = false;
+      } else {
+        clearFieldError(priceGroup, priceError);
+      }
+    }
+
+    if (!valid) return;
+
+    const payload = {
+      symbol: symbolSelect.value,
+      side: currentSide,
+      order_type: currentType,
+      quantity: qty,
+    };
+    if (currentType === 'LIMIT') payload.price = priceInput.value.trim();
+
+    showConfirmModal(payload);
+  });
+
+  /* ── Confirm → place order ──────────────────────────────── */
+  confirmBtn.addEventListener('click', async () => {
+    if (!pendingOrder) return;
+    modal.classList.remove('show');
+
+    submitBtn.disabled = true;
+    const origText = submitBtn.textContent;
+    submitBtn.innerHTML = '<span style="display:inline-block;width:14px;height:14px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px"></span>Placing…';
+
+    try {
+      const data = await api('/api/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(pendingOrder),
+      });
+      toast(`Order placed! ID: ${data.orderId} — Status: ${data.status}`, 'success');
+      qtyInput.value = '';
+      priceInput.value = '';
+      updateEstCost();
+      loadHistory();
+      loadOpenOrders();
+      loadPositions();
+      loadAccount();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+      pendingOrder = null;
+    }
+  });
+
+  /* ── Refresh loop ───────────────────────────────────────── */
+  async function refreshAll() {
+    await Promise.all([checkStatus(), loadTicker(), loadAccount(), loadPositions(), loadOpenOrders(), loadHistory()]);
+  }
+
+  qtySuffix.textContent = getBaseAsset(symbolSelect.value);
+  refreshAll();
+
+  // Auto-refresh every 5s
+  setInterval(() => { loadTicker(); loadAccount(); loadPositions(); loadOpenOrders(); }, 5000);
+
+  // Escape closes modal
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { modal.classList.remove('show'); pendingOrder = null; } });
+
+})();
+</script>
+</body>
+</html>
